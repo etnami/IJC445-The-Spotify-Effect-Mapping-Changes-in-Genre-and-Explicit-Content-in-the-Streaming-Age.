@@ -54,80 +54,12 @@ View(final_dataset)
 library(ggplot2)
 library(dplyr)
 
+
 #CHOSEN VISUALISATIONS----------------------------------------------------------
 #how did spotify's launch change how people interacted with music and what they made popular
 
-#getting top 5 genres in the dataset based on highest amount of popular songs (using is_pop)
-top_5_genres <- final_dataset %>%
-  filter(is_pop == 1) %>% 
-  group_by(main_genre) %>%
-  summarise(pop_song_count = n()) %>%
-  slice_max(pop_song_count, n = 5) %>%
-  pull(main_genre)
-
-#HEAT MAP OF EXPLICIT SHIFT IN POPULAR SONGS PRE AND POST SPOTIFY LAUNCH
-
-
-#setting my bins for the years i want to look at/ how i want to divide data on the plot
-heatmap_custom <- final_dataset %>%
-  filter(is_pop == 1, 
-         main_genre %in% top_5_genres,
-         year >= 2000, year <= 2018) %>%
-  mutate(year_bin = case_when(
-    year >= 2000 & year <= 2003 ~ "2000-2003",
-    year >= 2004 & year <= 2007 ~ "2004-2007",
-    year >= 2008 & year <= 2011 ~ "2008-2011",
-    year >= 2012 & year <= 2015 ~ "2012-2015",
-    year >= 2016 & year <= 2018 ~ "2016-2018"
-  )) %>%
-  mutate(year_bin = factor(year_bin, levels = c("2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2018"))) %>%
-  group_by(year_bin, main_genre) %>%
-  summarise(
-    pct_explicit = mean(explicit == TRUE, na.rm = TRUE) * 100,
-    .groups = "drop"
-  )
-
-#plotting the heatmap showing explicit content in popular songs over time 
-ggplot(heatmap_custom, aes(x = year_bin, y = reorder(main_genre, -pct_explicit), fill = pct_explicit)) +
-  geom_tile(color = "white", linewidth = 0.5) +
-  
-  #using colourblind-friendly scale
-  scale_fill_viridis_c(option = "cividis", 
-                       name = "% Explicit", 
-                       labels = function(x) paste0(x, "%")) +
-  
-  #adding a dashed line to show spotify's inception so it is easier to compare pre and post spotify dynamics
-  #using the hexcode for spotify's logo for the line to make it relevant and stand out
-  geom_vline(xintercept = 2.5, linetype = "dashed", color = "#1db954", linewidth = 1.2) +
-  
-  #adding label to the line to tell the viewer what it means
-  annotate("text", x = 2.6, y = 5.4, label = "Spotify Launch (2008)", 
-           color = "white", angle = 0, fontface = "bold", hjust = 0, size = 3.5) +
-  
-  #adding percentage labels on the boxes to make it more readable and accessible- white for the dark colours and black for the light colours
-  geom_text(aes(label = paste0(round(pct_explicit), "%"),
-                color = ifelse(pct_explicit < 45, "white", "black")), 
-            fontface = "bold", size = 4.5) +
-  scale_color_identity() + 
-  #adding labels to the plot
-  labs(
-    title = "How Has Interest in Explicit Content Changed\nOver Time",
-    subtitle = "Showing how proportions of popular songs involved explicit content",
-    x = "Time Period",
-    y = "Most Popular Overall Genres",
-    caption = "Dashed line indicates transition into the streaming age"
-  ) +
-  theme_minimal() +
-  theme(
-    panel.grid = element_blank(),
-    axis.text = element_text(face = "bold", size = 11),
-    plot.title = element_text(face = "bold", size = 16),
-    legend.position = "bottom",
-    legend.key.width = unit(2, "cm")
-  )
-
-
-#WAFFLE CHART COMPARISON OF POPULAR EXPLICIT SONGS PRE AND POST SPOTIFY LAUNCH
+#-------------------------------------------------------------------------------
+#FIGURE 1: WAFFLE CHART COMPARISON OF POPULAR EXPLICIT SONGS PRE AND POST SPOTIFY LAUNCH
 
 #fetching amount of popular songs that had explicit content from 2000-2018
 waffle_stats <- final_dataset %>%
@@ -200,105 +132,176 @@ ggplot(full_plot_data, aes(x = x, y = y, fill = category)) +
   )
 
 
-#SANKEY MAPPING TOP 5 GENRES BASED ON TOTAL AMOUNT OF POPULAR SONGS TO EXPLICITNESS AND POPULARITY 
-#can be misleading example- based on story you want to tell how to organise nodes
-install.packages("devtools")
+#-------------------------------------------------------------------------------------------------
 
-#installing sankey
-devtools::install_github("davidsjoberg/ggsankey")
-library(ggsankey)
+#FIGURE 1.5: GROUPED BAR COMPARING AMOUNT OF TOTAL RELEASES, TOTAL POPULAR, EXPLICIT POPULAR, AND NON-EXPLICIT POPULAR
 
-
-#preparing my data using my top_5_genres variable that fetches top 5 highest performing genres based on amount of popular songs
-df_sankey <- final_dataset %>%
-  filter(main_genre %in% top_5_genres) %>% 
-  mutate(
-    explicit = ifelse(explicit == TRUE, "Explicit", "Non-Explicit"),
-    song_status = ifelse(is_pop == 1, "Popular Song", "Non-Popular Song")
+groupbar_data <- final_dataset %>%
+  mutate(era = ifelse(year <= 2007, "Pre-Spotify (2000-2007)", "Post-Spotify (2008-2018)")) %>%
+  mutate(era = factor(era, levels = c("Pre-Spotify (2000-2007)", "Post-Spotify (2008-2018)"))) %>%
+  group_by(era) %>%
+  summarise(
+    "Total Released" = n(),
+    "Popular Explicit" = sum(explicit == 1 & is_pop == 1, na.rm = TRUE),
+    "Non-popular Explicit" = sum(explicit == 1 & is_pop == 0, na.rm = TRUE),
+    "Total Popular" = sum(is_pop == 1, na.rm = TRUE),
+    .groups = "drop"
   ) %>%
-  # SWAP ORDER HERE: explicit first, then main_genre
-  select(explicit, main_genre, song_status) %>%
-  make_long(explicit, main_genre, song_status)
-
-#making the plot, using cividis for consistency across my visualisations
-ggplot(df_sankey, aes(x = x, 
-                      next_x = next_x, 
-                      node = node, 
-                      next_node = next_node, 
-                      fill = factor(node), 
-                      label = node)) +
-  geom_sankey(flow.alpha = 0.6, node.color = "black", node.size = 0.2) +
-  geom_sankey_label(size = 3.5, color = "black", fill = "white", alpha = 0.9) +
-  scale_fill_viridis_d(option = "cividis") +
-  scale_x_discrete(labels = c("explicit" = "Content", 
-                              "main_genre" = "Top Genre", 
-                              "song_status" = "Outcome")) +
   
-  theme_sankey(base_size = 14) +
-  labs(
-    title = "How Explicitness and Genre interact with Chart Popularity",
-    subtitle = "Flowing from Content Type through Genre to Chart Success",
-    x = NULL
-  ) +
-  theme(legend.position = "none",
-        axis.text.x = element_text(face = "bold", color = "black", size = 12),
-        plot.title = element_text(face = "bold"))
+  pivot_longer(cols = -era, names_to = "metric", values_to = "count") %>%
+  
+  mutate(metric = factor(metric, levels = c("Total Released", "Total Popular", 
+                                            "Popular Explicit", "Non-popular Explicit")))
 
 
-#STACKED BAR CHART SHOWING PROPORTION OF EXPLICIT VS CLEAN OF TOP 5 GENRES MEASURED BY TOTAL AMOUNT OF POPULAR SONGS
-
-#fetching top 5 genres based on artist follower count (rather than amount of popular songs)
-top_5_genres_artist <- final_dataset %>%
-  group_by(main_genre) %>%
-  # Sum the total followers for each genre
-  summarise(total_followers = sum(follower_count, na.rm = TRUE)) %>%
-  # Select the top 5 based on that sum
-  slice_max(total_followers, n = 5) %>%
-  # Extract just the names into a list (vector) for filtering later
-  pull(main_genre)
-
-
-
-explicit_5_data <- final_dataset %>%
-  filter(main_genre %in% top_5_genres_artist) %>%
-  mutate(explicit = ifelse(explicit == TRUE, "Explicit", "Non-Explicit"))
-
-
-labeled_explicit5_data <- final_dataset %>%
-  filter(main_genre %in% top_5_genres_artist) %>%
-  mutate(explicit = ifelse(explicit == TRUE, "Explicit", "Non-Explicit")) %>%
-  #grouping by genre and explicitness
-  group_by(main_genre, explicit) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  #calculating percentage of explicit popular songs in each genre
-  group_by(main_genre) %>%
-  mutate(percentage = n / sum(n))
-
-#making the plot
-ggplot(labeled_explicit5_data, aes(x = main_genre, y = percentage, fill = explicit)) +
-  geom_col(position = "fill") +
-  #adding labels inside the bars for easier readability
-  geom_text(aes(label = percent(percentage, accuracy = 1)), 
-            position = position_stack(vjust = 0.5), 
-            color = "white", 
+ggplot(groupbar_data, aes(x = era, y = count, fill = metric)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  geom_text(aes(label = count), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5, 
             fontface = "bold",
             size = 3.5) +
-  scale_y_continuous(labels = percent) +
-  scale_fill_viridis_d(option = "cividis", begin = 0.3, end = 0.7) +
-  labs(title = "Proportion of Explicit vs. Non-Explicit Songs of Top Genres",
-       subtitle = "top genre based on follower count of artist",
-       x = "Main Genre",
-       y = "Percentage of Songs",
-       fill = "Content") +
+  scale_fill_manual(values = c("Total Released" = "grey70", 
+                               "Total Popular" = "#e6cc7e", 
+                               "Popular Explicit" = "#b59e3d", 
+                               "Non-popular Explicit" = "#00204d"), 
+                    name = "Information Type") +
+  
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  
+  labs(title = "Detailed Look at Volume, Explicitness, and Popularity by Era",
+       subtitle = "Comparing total musical output against explicit and popular subsets",
+       y = "Number of Songs", 
+       x = "Era") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    legend.position = "bottom",
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "bold"),
+    axis.text.x = element_text(face = "bold", size = 10, color = "black")
+  )
 
 
+#-------------------------------------------------------------------------------
+
+#FIGURE 2: HEAT MAP OF EXPLICIT SHIFT IN POPULAR SONGS PRE AND POST SPOTIFY LAUNCH
+
+#getting top 5 genres in the dataset based on highest amount of popular songs (using is_pop)
+top_5_genres <- final_dataset %>%
+  filter(is_pop == 1) %>% 
+  group_by(main_genre) %>%
+  summarise(pop_song_count = n()) %>%
+  slice_max(pop_song_count, n = 5) %>%
+  pull(main_genre)
+
+#setting my bins for the years i want to look at/ how i want to divide data on the plot
+heatmap_custom <- final_dataset %>%
+  filter(is_pop == 1, 
+         main_genre %in% top_5_genres,
+         year >= 2000, year <= 2018) %>%
+  mutate(year_bin = case_when(
+    year >= 2000 & year <= 2003 ~ "2000-2003",
+    year >= 2004 & year <= 2007 ~ "2004-2007",
+    year >= 2008 & year <= 2011 ~ "2008-2011",
+    year >= 2012 & year <= 2015 ~ "2012-2015",
+    year >= 2016 & year <= 2018 ~ "2016-2018"
+  )) %>%
+  mutate(year_bin = factor(year_bin, levels = c("2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2018"))) %>%
+  group_by(year_bin, main_genre) %>%
+  summarise(
+    pct_explicit = mean(explicit == TRUE, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+#plotting the heatmap showing explicit content in popular songs over time 
+ggplot(heatmap_custom, aes(x = year_bin, y = reorder(main_genre, -pct_explicit), fill = pct_explicit)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  
+  #using colourblind-friendly scale
+  scale_fill_viridis_c(option = "cividis", 
+                       name = "% Explicit", 
+                       labels = function(x) paste0(x, "%")) +
+  
+  #adding a dashed line to show spotify's inception so it is easier to compare pre and post spotify dynamics
+  #using the hexcode for spotify's logo for the line to make it relevant and stand out
+  geom_vline(xintercept = 2.5, linetype = "dashed", color = "#1db954", linewidth = 1.2) +
+  
+  #adding label to the line to tell the viewer what it means
+  annotate("text", x = 2.6, y = 5.4, label = "Spotify Launch (2008)", 
+           color = "white", angle = 0, fontface = "bold", hjust = 0, size = 3.5) +
+  
+  #adding percentage labels on the boxes to make it more readable and accessible- white for the dark colours and black for the light colours
+  geom_text(aes(label = paste0(round(pct_explicit), "%"),
+                color = ifelse(pct_explicit < 45, "white", "black")), 
+            fontface = "bold", size = 4.5) +
+  scale_color_identity() + 
+  #adding labels to the plot
+  labs(
+    title = "How Has Interest in Explicit Content Changed Over Time",
+    subtitle = "Showing how proportions of popular songs involved explicit content",
+    x = "Time Period",
+    y = "Most Popular Overall Genres",
+    caption = "Dashed line indicates transition into the streaming age"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(face = "bold", size = 11),
+    plot.title = element_text(face = "bold", size = 16),
+    legend.position = "bottom",
+    legend.key.width = unit(2, "cm")
+  )
 
 
-#BONUS GRAPH: COMPARING AMOUNT OF SONGS RELEASED WITH AMOUNT THAT BECAME POPULAR FOR THE TOP 5 MOST POPULAR GENRES
+#-------------------------------------------------------------------------------
 
-#getting top 5 genres based on popularity same as sankey
+#FIGURE 2.5:WAFFLE CHART COMPARISON FOR ATL HIP HOP- how many songs were released in 2018 vs how many were popular
+
+#filtering for 2018 and atl hiphop
+explicit_atlhiphop_2018 <- final_dataset %>%
+  filter(year == 2018, main_genre == "atl hip hop") %>%
+  summarise(
+    explicit_pct = round(mean(explicit == TRUE) * 100),
+    non_explicit_pct = 100 - explicit_pct
+  )
+
+waffle_explicit_df <- data.frame(
+  x = rep(1:10, each = 10),
+  y = rep(1:10, times = 10),
+  status = c(rep("Explicit", explicit_atlhiphop_2018$explicit_pct), 
+             rep("Non-explicit", explicit_atlhiphop_2018$non_explicit_pct))
+)
+
+explicit_label <- paste0(explicit_atlhiphop_2018$explicit_pct, "% of songs were explicit")
+
+ggplot(waffle_explicit_df, aes(x = x, y = y, fill = status)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  scale_fill_viridis_d(option = "cividis", direction = -1) + 
+  coord_fixed() +
+  theme_void() + 
+  labs(
+    title = "2018 Atl Hip Hop: Explicitness by Volume Ratio",
+    subtitle = "Each square represents 1% of total songs released",
+    fill = "Content Type"
+  ) +
+  annotate("text", x = 5.5, y = 11, label = explicit_label, 
+           size = 5, fontface = "bold", color = "#00204D") + 
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    # Force the background to be white
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+#-------------------------------------------------------------------------------
+
+#Figure 3.5: STACKED BAR COMPARING AMOUNT OF SONGS RELEASED WITH AMOUNT THAT BECAME POPULAR FOR THE TOP 5 MOST POPULAR GENRES
+
+#getting top 5 genres based on popularity
 top_5_vec <- final_dataset %>%
   filter(is_pop == 1) %>% 
   group_by(main_genre) %>%
@@ -339,7 +342,7 @@ ggplot(bar_data_labeled, aes(x = reorder(main_genre, -count, sum), y = count, fi
   scale_color_identity() + 
   scale_y_continuous(labels = scales::percent) +
   labs(
-    title = "Genre Efficiency: Volume of Songs Released vs\nAmount Of Popular Songs",
+    title = "Genre Efficiency: Volume of Songs Released vs Amount Of Popular Songs",
     subtitle = "Popular songs (Yellow) compared to non-popular releases (Navy) for highest performing genres",
     x = "Top 5 Genres",
     y = "Percentage of Total Genre Output"
@@ -352,4 +355,98 @@ ggplot(bar_data_labeled, aes(x = reorder(main_genre, -count, sum), y = count, fi
     plot.title = element_text(face = "bold", size = 16),
     legend.position = "bottom",
     legend.text = element_text(size = 11, face = "bold")
+  )
+
+
+
+#------------------------------------------------------------------------------------------------
+
+
+#FIGURE 4: LINE GRAPH COMPARING NUMBER OF POPULAR EXPLICIT AND NON-POPULAR EXPLICIT WITH SPOTIFY LAUNCH IN 2008 MARKED
+
+line_data_volume <- final_dataset %>%
+  group_by(year, is_pop) %>%
+  summarise(explicit_count = sum(explicit == 1, na.rm = TRUE), .groups = "drop")
+
+ggplot(line_data_volume, aes(x = year, y = explicit_count, color = as.factor(is_pop), label = explicit_count)) +
+  geom_vline(xintercept = 2008, linetype = "dashed", color = "#19a34a", alpha = 0.8) +
+  
+  annotate("text", x = 2008.5, y = max(line_data_volume$explicit_count) * 0.95, 
+           label = "Spotify Launch (2008)", hjust = 0, size = 3.5, color = "#19a34a", fontface = "bold") +
+  
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 1.8) +
+  
+  geom_text(aes(vjust = ifelse(year == 2002 & is_pop == 1, 4.5, 
+                               ifelse(is_pop == 0, -1.5, 2.5))), 
+            size = 3.5, 
+            fontface = "bold", 
+            show.legend = FALSE) +
+  
+  scale_x_continuous(breaks = seq(2000, 2018, by = 3)) + 
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15))) +
+  
+  scale_color_viridis_d(option = "cividis", 
+                        begin = 0, 
+                        end = 0.8,
+                        labels = c("Not Popular", "Popular"),
+                        name = "Outcome Status") +
+  
+  labs(title = "Comparison of Total Explicit Songs By Year Over Time",
+       subtitle = "Total number of explicit songs that were popular vs not popular (2000-2018)",
+       y = "Number of Explicit Songs", 
+       x = "Year") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "bold")
+  )
+
+
+#making more accessible
+line_data_volume <- final_dataset %>%
+  group_by(year, is_pop) %>%
+  summarise(explicit_count = sum(explicit == 1, na.rm = TRUE), .groups = "drop_last") %>%
+  mutate(pct = (explicit_count / sum(explicit_count)) * 100,
+         combined_label = paste0(explicit_count, " (", round(pct, 0), "%)")) %>%
+  ungroup()
+
+ggplot(line_data_volume, aes(x = year, y = explicit_count, color = as.factor(is_pop))) +
+  geom_vline(xintercept = 2008, linetype = "dashed", color = "#19a34a", alpha = 0.8) +
+  
+  annotate("text", x = 2008.5, y = max(line_data_volume$explicit_count) * 0.95, 
+           label = "Spotify Launch (2008)", hjust = 0, size = 3.5, color = "#19a34a", fontface = "bold") +
+  
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 1.8) +
+  
+  geom_text(aes(label = ifelse(year %in% c(2000, 2002, 2008, 2015, 2018), combined_label, "")),
+            vjust = ifelse(line_data_volume$is_pop == 1, 3.5, -2.0), 
+            size = 3.2, 
+            fontface = "bold", 
+            show.legend = FALSE) +
+  
+  scale_x_continuous(breaks = seq(2000, 2018, by = 3)) + 
+  
+  scale_y_continuous(breaks = seq(0, 210, by = 30), 
+                     expand = expansion(mult = c(0.15, 0.25))) + 
+  
+  scale_color_viridis_d(option = "cividis", 
+                        begin = 0, 
+                        end = 0.8,
+                        labels = c("Not Popular", "Popular"),
+                        name = "Outcome Status") +
+  
+  labs(title = "Key Shifts in Explicit Song Volume (2000-2018)",
+       subtitle = "Yellow labels pushed down | Navy labels pushed up | Y-axis increments of 30",
+       y = "Number of Explicit Songs", 
+       x = "Year") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "bold")
   )
