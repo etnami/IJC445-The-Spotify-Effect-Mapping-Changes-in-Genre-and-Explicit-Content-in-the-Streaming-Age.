@@ -291,7 +291,7 @@ ggplot(waffle_explicit_df, aes(x = x, y = y, fill = status)) +
     legend.position = "bottom",
     plot.title = element_text(face = "bold", hjust = 0.5),
     plot.subtitle = element_text(hjust = 0.5),
-    # Force the background to be white
+    #forcing the background to be white
     plot.background = element_rect(fill = "white", color = NA),
     panel.background = element_rect(fill = "white", color = NA)
   )
